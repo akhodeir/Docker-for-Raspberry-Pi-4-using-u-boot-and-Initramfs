@@ -115,7 +115,7 @@ RUN make
 
 WORKDIR $HOME_PATH
 
-RUN git clone --depth=1 -b rpi-5.10.y https://github.com/raspberrypi/linux.git
+RUN git clone --depth=1 https://github.com/raspberrypi/linux.git
 WORKDIR $HOME_PATH/linux
 
 RUN make ARCH=arm64 CROSS_COMPILE=aarch64-rpi4-linux-gnu- bcm2711_defconfig
