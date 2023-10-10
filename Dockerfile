@@ -3,14 +3,24 @@
 
 FROM ubuntu:latest
 
-ARG UID=1000
-ARG GID=1000
-
 # Set default shell during Docker image build to bash
 SHELL ["/bin/bash", "-c"]
 
+# LABEL about the custom image
+LABEL maintainer="user"
+LABEL version="0.1"
+LABEL description="This is a custom Docker Image for embeded linux for Raspberry Pi."
+
+
 # Set non-interactive frontend for apt-get to skip any user confirmations
 ENV DEBIAN_FRONTEND=noninteractive
+
+ARG USER_NAME=user
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN groupadd ${USER_NAME} --gid ${USER_GID}\
+    && useradd -l -m ${USER_NAME} -u ${USER_UID} -g ${USER_GID} -s /bin/bash
+
 
 # Install base packages
 RUN apt-get -y update && \
@@ -73,15 +83,13 @@ RUN apt-get -y update && \
        xxd \
        xz-utils
 
-# Create 'user' account
-RUN groupadd -g $GID -o user
-ENV HOME_PATH=/home/user/
-
-RUN useradd -u $UID -m -g user -G plugdev user \
-	&& echo 'user ALL = NOPASSWD: ALL' > /etc/sudoers.d/user \
-	&& chmod 0440 /etc/sudoers.d/user
-
-USER user
+# Create non root user for pip
+ENV USER=${USER_NAME}
+RUN echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USER_NAME}
+RUN chmod 0440 /etc/sudoers.d/${USER_NAME}
+#RUN chown -R ${USER_NAME}:${USER_NAME} /home/${USER_NAME}
+ENV HOME_PATH=/home/${USER_NAME}/
+USER ${USER_NAME}
 
 WORKDIR $HOME_PATH
 
@@ -125,7 +133,7 @@ RUN echo 'export CROSS_COMPILE=aarch64-rpi4-linux-gnu-' >> ~/.bashrc
 ENV CROSS_COMPILE=aarch64-rpi4-linux-gnu- 
 RUN make rpi_4_defconfig
 #Build u-boot
-RUN make
+RUN make -j$(nproc)
 #Install u-boot
 #copy the files to SD-Card
 #sudo cp u-boot.bin /mnt/boot
