@@ -88,7 +88,7 @@ ENV USER=${USER_NAME}
 RUN echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USER_NAME}
 RUN chmod 0440 /etc/sudoers.d/${USER_NAME}
 #RUN chown -R ${USER_NAME}:${USER_NAME} /home/${USER_NAME}
-ENV HOME_PATH=/home/${USER_NAME}/
+ENV HOME_PATH=/home/${USER_NAME}
 USER ${USER_NAME}
 
 WORKDIR $HOME_PATH
@@ -134,12 +134,32 @@ ENV CROSS_COMPILE=aarch64-rpi4-linux-gnu-
 RUN make rpi_4_defconfig
 #Build u-boot
 RUN make -j$(nproc)
-#Install u-boot
-#copy the files to SD-Card
-#sudo cp u-boot.bin /mnt/boot
 
+#Prepare folders
 WORKDIR $HOME_PATH
+RUN mkdir -p output/{boot,rootfs}
+#Install u-boot
+RUN cp u-boot/u-boot.bin output/boot
+#Download Raspberry Pi firmware/boot directory
+WORKDIR $HOME_PATH
+RUN mkdir firmware
+RUN git clone --depth=1 https://github.com/raspberrypi/firmware.git
+#copy firmware files to output
+RUN cp firmware/boot/{bootcode.bin,start4.elf} output/boot/
+#RUN cat << EOF > config.txt \
+#       enable_uart=1 \
+#       arm_64bit=1 \
+#       kernel=u-boot.bin \
+#       EOF
+RUN touch config.txt && \
+       echo 'enable_uart=1' >> config.txt && \
+       echo 'arm_64bit=1' >> config.txt && \
+       echo 'kernel=u-boot.bin' >> config.txt
+
+RUN cp config.txt output/boot/
+
 #==========Kernel==========#
+WORKDIR $HOME_PATH
 #Download the Kernel Source
 RUN git clone --depth=1 https://github.com/raspberrypi/linux.git
 WORKDIR $HOME_PATH/linux
@@ -147,18 +167,22 @@ WORKDIR $HOME_PATH/linux
 RUN make ARCH=arm64 CROSS_COMPILE=aarch64-rpi4-linux-gnu- bcm2711_defconfig
 RUN make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-rpi4-linux-gnu-
 #Install the kernel and device tree
-#sudo cp arch/arm64/boot/Image /mnt/boot
-#sudo cp arch/arm64/boot/dts/broadcom/bcm2711-rpi-4-b.dtb /mnt/boot/
+RUN cp arch/arm64/boot/Image $HOME_PATH/output/boot
+RUN cp arch/arm64/boot/dts/broadcom/bcm2711-rpi-4-b.dtb $HOME_PATH/output/boot
 
-WORKDIR $HOME_PATH
 #==========Root filesystem==========#
-RUN mkdir rootfs && \
-	cd rootfs && \
-	mkdir {bin,dev,etc,home,lib64,proc,sbin,sys,tmp,usr,var} && \
-	mkdir usr/{bin,lib,sbin} && \
-	mkdir var/log
+WORKDIR $HOME_PATH/output/rootfs
+RUN mkdir {bin,dev,etc,home,lib64,proc,sbin,sys,tmp,usr,var} && \
+       mkdir usr/{bin,lib,sbin} && \
+	mkdir var/log && \
+       ln -s lib64 lib
+# Change the owner of the directories to be root
+# Because current user doesn't exist on target device
+# sudo must be used
+RUN sudo chown -R root:root *
 
-
+#==========Busy Box==========#
+WORKDIR $HOME_PATH
 # Download the source code
 RUN git clone --depth=1 git://busybox.net/busybox.git 
 WORKDIR $HOME_PATH/busybox
